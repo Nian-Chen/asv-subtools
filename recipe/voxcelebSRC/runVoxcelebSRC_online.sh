@@ -71,25 +71,26 @@ subtools/newCopyData.sh $prefix "voxceleb2_dev voxceleb1"
 # subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runResnetXvector_online.py --stage=0 --endstage=2
 # subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runRepvggXvector.py --stage=0 --endstage=2
 # subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runEcapaXvector_online.py --stage=0 --endstage=2
-subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runTransformerXvector.py --stage=0 --endstage=2
+# subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runTransformerXvector.py --stage=0 --endstage=2
+subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runPTM_EcapaXvector_online_fixedchunk.py --stage=0 --endstage=2
+# subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runPTM_EcapaXvector_online.py --stage=0 --endstage=2
 
 # [6] Train a thin Resnet34 model with AM-Softmax loss and 8 GPUs will be used to accelerate training
 # subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runResnetXvector_online.py --stage=3 --endstage=3 --gpu-id=0,1,2,3
 # subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runRepvggXvector.py --stage=3 --endstage=3 --gpu-id=0,1,2,3
 # subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runEcapaXvector_online.py --stage=3 --endstage=3 --gpu-id=0,1,2,3
-subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runTransformerXvector.py --stage=3 --endstage=3 --gpu-id=0,1,2,3
+# subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runTransformerXvector.py --stage=3 --endstage=3 --gpu-id=0,1,2,3
+subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runPTM_EcapaXvector_online_fixedchunk.py --stage=3 --endstage=3 --gpu-id=0,1,2,3
+# subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runPTM_EcapaXvector_online.py --stage=3 --endstage=3 --gpu-id=0,1,2,3
 
 # [7] Extract near xvectors for voxceleb1 and voxceleb2_dev
 # subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runResnetXvector_online.py --stage=4
 # subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runRepvggXvector.py --stage=4
 # subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runEcapaXvector_online.py --stage=4
-subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runTransformerXvector.py --stage=4
+# subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runTransformerXvector.py --stage=4
+subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runPTM_EcapaXvector_online_fixedchunk.py --stage=4
+# subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runPTM_EcapaXvector_online.py --stage=4
 
-# [8] Large-Margin Fine-tune
-subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runTransformerXvector_LM.py --stage=3 --endstage=3 --gpu-id=0,1,2,3
-
-# [9] Extract xvectors
-subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runTransformerXvector.py --stage=4
 
 ### Back-end scoring
 # [14] Score with submean + Cosine + AS-Norm processes.
@@ -105,13 +106,14 @@ subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runTransformerXvector.p
 # done
 
 tasks="vox1-O vox1-O-clean vox1-E vox1-E-clean vox1-H vox1-H-clean"
+submean=true
+prefix='raw'
+# The vectordir should be the same with the model_dir set in the launcher_py
 for task in $tasks;do
     score_norm=false
     [ "$task" == "vox1-O" ] && score_norm=true
     [ "$task" == "vox1-O-clean" ] && score_norm=true
-    subtools/recipe/voxcelebSRC/gather_results_from_epochs.sh --prefix $prefix --score cosine  --submean false \
-         --vectordir "exp/conformer_6L256D4H_4sub_lm" --task $task --epochs "4" --positions "near" --trainset voxceleb2_dev \
-         --score-norm $score_norm --score-norm-method "asnorm" --top-n 300 --cohort-set voxceleb2_dev
+    subtools/recipe/voxcelebSRC/gather_results_from_epochs.sh --prefix $prefix --score cosine  --submean ${submean} \
+         --vectordir "exp/ecapa_tdnn_xvector_ssl_fixedchunk" --task $task --epochs "20" --positions "near" --trainset voxceleb2_dev \
+         --score-norm $score_norm --score-norm-method "asnorm" --top-n 800 --cohort-set voxceleb2_dev
 done
-
-

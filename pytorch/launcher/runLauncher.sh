@@ -76,7 +76,8 @@ fi
 # and use these GPU memory to extract x-vectors.
 if [[ "$stage" -le 3 && "$endstage" -ge "$stage" ]];then
     [ $endstage -ge 3 ] && endstage=3
-    $train_cmd $launcher $launcher_options --stage=$stage --endstage=$endstage || exit 1 
+    # for A40: NCCL_P2P_LEVEL=NVL
+    NCCL_P2P_LEVEL=NVL $train_cmd $launcher $launcher_options --stage=$stage --endstage=$endstage || exit 1 
 fi
 
 if [[ "$stage" -le 4 && "$endstage" -ge 4 ]];then

@@ -187,11 +187,14 @@ def WavEgs(egs_csv,conf,data_type='raw',partition=True,num_targets=0):
 
         random_chunk = conf.get('random_chunk',False)
         random_chunk_size = conf.get('random_chunk_size',2.015)
-        
+        dynamic_random_chunk = conf.get('dynamic_random_chunk',False)
                 
         if random_chunk:
-            dataset = Processor(dataset, processor.random_chunk, random_chunk_size)
-
+            if dynamic_random_chunk:
+                dynamic_conf = conf.get('dynamic_conf', {})
+                dataset = Processor(dataset, processor.dynamic_random_chunk(**dynamic_conf))
+            else:
+                dataset = Processor(dataset, processor.random_chunk, random_chunk_size)
 
 
         speech_aug = conf.get('speech_aug', False)
@@ -210,10 +213,13 @@ def WavEgs(egs_csv,conf,data_type='raw',partition=True,num_targets=0):
                 raise ValueError("multi speaker id perturb setting, check your speech aug config")
             spkid_aug = spkid_aug_lat*spkid_aug
             dataset =  Processor(dataset, speechaug_pipline)
-
-        feature_extraction_conf = conf.get('feature_extraction_conf',{})
-        feature_extraction = processor.KaldiFeature(**feature_extraction_conf)
-        dataset =  Processor(dataset, feature_extraction)
+        if conf.get('use_w2v2',False):
+            # for w2v2
+            dataset =  Processor(dataset, processor.RawWav())
+        else:
+            feature_extraction_conf = conf.get('feature_extraction_conf',{})
+            feature_extraction = processor.KaldiFeature(**feature_extraction_conf)
+            dataset =  Processor(dataset, feature_extraction)
     else:
         dataset =  Processor(dataset,processor.offline_feat)
 
@@ -251,8 +257,13 @@ def WavEgsXvector(wav_scp,feat_conf={},data_type='kaldi',de_silence=False,de_sil
             dataset = Processor(dataset, processor.parse_raw)
         if de_silence:
             dataset = Processor(dataset,processor.de_sil,**de_sil_conf)
-        feature_extraction = processor.KaldiFeature(**feat_conf)
-        dataset =  Processor(dataset, feature_extraction)
+        use_w2v2 = feat_conf.pop('use_w2v2')
+        # print(f"###########use_w2v2:{use_w2v2}")
+        if use_w2v2:
+            dataset =  Processor(dataset, processor.RawWav())
+        else:
+            feature_extraction = processor.KaldiFeature(**feat_conf)
+            dataset =  Processor(dataset, feature_extraction)
     elif data_type == "kaldi":
         dataset =  Processor(dataset, processor.offline_feat)
     else:
@@ -266,9 +277,10 @@ class BaseBunch():
     """
 
     def __init__(self, trainset, valid=None,prefetch_factor=2,num_workers=0, pin_memory=False):
-
-        self.train_loader = DataLoader(trainset, batch_size=None, num_workers=num_workers,
-                                        pin_memory=pin_memory,prefetch_factor=prefetch_factor)
+        if num_workers == 0:
+            self.train_loader = DataLoader(trainset, batch_size=None, num_workers=num_workers, pin_memory=pin_memory)
+        else:
+            self.train_loader = DataLoader(trainset, batch_size=None, num_workers=num_workers, pin_memory=pin_memory,prefetch_factor=prefetch_factor)
         if valid is not None:
             self.valid_loader = DataLoader(valid, batch_size=None, num_workers=0,
                                         pin_memory=pin_memory)

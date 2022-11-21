@@ -221,6 +221,7 @@ class SimpleTrainer(_BaseTrainer):
         model = self.elements["model"]
         model_forward = self.elements["model_forward"]
         optimizer = self.elements["optimizer"]
+        optimizer.zero_grad()
         cur_step = self.training_point[2]
 
         # model level warm up. just for transformer.
@@ -460,14 +461,15 @@ class SimpleTrainer(_BaseTrainer):
             stop_training =  torch.zeros(1).to(device)
 
             with model_context:
-
-                for this_epoch in range(start_epoch, epochs+5):
+                # epochs --> epochs + 1
+                # range: [0, 1, 2 ,,, 9] --> [0, 1, 2 ,,, 10]
+                for this_epoch in range(start_epoch, epochs + 1):
                     # In case the uneven data in different ranks when ddp training, 
                     # here we design a more epoch for sub-ranks to ensure the main rank can broadcasting.
                     if utils.is_main_training:
                         if this_epoch ==  epochs: # skip the last+1 epoch
                             stop_training =  torch.ones(1).to(device)
-
+                    # range of training_point[0]: [1, 2 ,3 ,,, 10] --> [1, 2 ,3 ,,, 11]
                     self.training_point[0]+=1
                     data.train_loader.dataset.set_epoch(this_epoch)
 

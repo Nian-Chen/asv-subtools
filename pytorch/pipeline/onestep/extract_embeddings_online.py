@@ -25,7 +25,9 @@ torchaudio.set_audio_backend(torchaudio_backend)
 # Parse
 parser = argparse.ArgumentParser(description="Extract embeddings form a piece of feats.scp or pipeline")
 
-
+parser.add_argument("--use_w2v2", type=str, default='false',
+                    choices=["true", "false"],
+                    help="If true, use raw wav as input")
 parser.add_argument("--nnet-config", type=str, default="",
                         help="This config contains model_blueprint and model_creation.")
 
@@ -85,7 +87,9 @@ try:
 
     model = utils.create_model_from_py(model_blueprint, model_creation)
     position = model.extracted_embedding
-    model.load_state_dict(torch.load(args.model_path, map_location='cpu'), strict=False)
+    sd = torch.load(args.model_path, map_location='cpu')
+    sd.pop("loss.weight")
+    model.load_state_dict(sd, strict=True)
 
 
     # Select device
@@ -97,6 +101,10 @@ try:
         feat_config=args.feat_config
         with open(feat_config, 'r') as fin:
             feature_extraction_conf = yaml.load(fin, Loader=yaml.FullLoader)
+        if args.use_w2v2 == "true":
+            feature_extraction_conf["use_w2v2"] = True
+        else:
+            feature_extraction_conf["use_w2v2"] = False
     else:
         pass
     tot_len=0
@@ -119,10 +127,17 @@ try:
             key = sample['keys'][0]
             feats = sample['feats'][0].to(devc)
 
-            total_dur += feats.size(0)*0.01
+            # total_dur += feats.size(0)*0.01
+            if args.use_w2v2:
+                # feats (num_audio_samples, 1)
+                total_dur += feats.size(0)*1/16000
+            else:
+                # feats (num_frames, fbank_dim)
+                total_dur += feats.size(0)*0.01
 
             timer.reset()
-            embedding = model.extract_embedding_whole(feats,position=position,maxChunk=args.max_chunk)
+            # embedding = model.extract_embedding_whole(feats,position=position,maxChunk=args.max_chunk)
+            embedding = model.extract_embedding(feats)
             # embedding1 = model.forward_1(feats)
             # print(embedding)
             # print(embedding1)

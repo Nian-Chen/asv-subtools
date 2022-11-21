@@ -19,6 +19,7 @@ from .speech_augment import SpeechAug,SpeedPerturb
 from .signal_processing import de_silence
 from libs.egs.augmentation import *
 from libs.egs.kaldi_features import InputSequenceNormalization
+from collections import deque
 torchaudio_backend = get_torchaudio_backend()
 torchaudio.set_audio_backend(torchaudio_backend)
 
@@ -241,8 +242,53 @@ def random_chunk(data,chunk_len=2.015):
         sample['lens'] = torch.ones(waveform.shape[0])
         yield sample
 
-
-
+class dynamic_random_chunk(object):
+    def __init__(self, batch_size=4, total_iter=10, chunk_len_init=2.0, chunk_len_final=6.0, cur_iter=0, sqrt=False, square=False):
+        self.batch_size = batch_size
+        self.total_iter = total_iter
+        self.chunk_len_init = chunk_len_init
+        self.chunk_len = self.chunk_len_init
+        self.chunk_len_final = chunk_len_final
+        self.sqrt = sqrt
+        self.square = square
+        # 不是batch级别的队列，而是sample级别的队列，故乘以batch_size
+        self.postion = deque(list(range(cur_iter*batch_size, total_iter*batch_size)))
+        # print(self.postion)
+    def __call__(self,data):
+        for sample in data:
+            assert 'wav' in sample
+            assert 'key' in sample
+            assert 'lens' in sample
+            assert 'sample_rate' in sample
+            if len(self.postion) != 0:
+                # current_postion=self.postion.pop(0)
+                # 不是batch级别的index，而是sample级别的index
+                current_postion = self.postion.popleft()
+                # print(self.postion)
+                if current_postion % self.batch_size == 0:
+                    # print("current_postion", current_postion)
+                    alpha = current_postion/(self.total_iter * self.batch_size)
+                    assert (self.sqrt and self.square) == False
+                    if self.sqrt:
+                        alpha = np.sqrt(alpha)
+                    elif self.square:
+                        alpha = np.square(alpha)
+                    # print(alpha)
+                    self.chunk_len = self.chunk_len_init + alpha * (self.chunk_len_final - self.chunk_len_init)
+                # print(self.chunk_len)
+            waveform = sample['wav'] 
+            duration_sample=int(sample['lens']*(sample['wav'].shape[1]))
+            snt_len_sample = int(self.chunk_len*sample['sample_rate'])
+            if duration_sample > snt_len_sample:
+                start = random.randint(0, duration_sample - snt_len_sample - 1)
+                stop = start + snt_len_sample
+                sample['wav'] = waveform[:,start:stop]
+            else:
+                repeat_num = math.ceil(snt_len_sample/duration_sample)
+                sample['wav'] = waveform[:,:duration_sample].repeat(1,repeat_num)[:,:snt_len_sample]
+            sample['lens'] = torch.ones(waveform.shape[0])
+            yield sample
+        
 
 def offline_feat(data):
     """ Read feats from kaldi ark.
@@ -465,7 +511,55 @@ class KaldiFeature(object):
             except Exception as ex:
                 logging.warning('Failed to make featrue {}'.format(sample['key']))
 
+class RawWav(object):
+    def __init__(self):
+        super().__init__()
 
+    def __call__(self,data):
+        for sample in data:
+            assert 'wav' in sample
+            assert 'key' in sample
+            assert 'label' in sample
+            assert 'lens' in sample
+            assert 'sample_rate' in sample
+            lens = sample['lens']
+            waveforms = sample['wav']
+            label = sample['label']
+            waveforms = waveforms * (1 << 15)
+            feats = []
+            labels = []
+            keys=[]
+            utt = sample['key']
+            try:
+                with torch.no_grad():
+                    lens=lens*waveforms.shape[1]
+
+                    for i,wav in enumerate(waveforms):
+
+                        if len(wav.shape)==1:
+                            # add channel
+                            wav=wav.unsqueeze(0)
+                        wav = wav[:,:lens[i].long()]
+                        feat = (wav - torch.mean(wav, dim=-1)) / torch.sqrt(torch.var(wav, dim=-1) + 1e-5)
+                        # (num_audio_samples, 1) <--> (num_frames, fbank_dim)
+                        feat = feat.transpose(0,1)
+                        if(torch.any((torch.isnan(feat)))):
+                            logging.warning('Failed to make featrue for {}, aug version:{}'.format(sample['key'],i))
+                            pass
+                        feat = feat.detach()
+                        key = sample['key']+'#{}'.format(i) if i>0 else sample['key']
+                        # [2d_tensor]
+                        feats.append(feat)
+                        keys.append(key)
+                        labels.append(label[i])
+                    if len(feats)==0:
+                        pass
+
+                    max_len = max([feat.size(1) for feat in feats])
+                    # print(dict(utt=utt,keys=keys,feats=feats,label=label,max_len=max_len))
+                    yield dict(utt=utt,keys=keys,feats=feats,labels=labels,max_len=max_len)
+            except Exception as ex:
+                logging.warning('Failed to make featrue {}'.format(sample['key']))
 class SpecAugPipline(object):
     def __init__(self,aug=None,aug_params={}):
         super().__init__()
@@ -616,16 +710,17 @@ def padding(data):
     for sample in data:
 
         assert isinstance(sample, list)
-
-        feats=[]
-        labels=[]
-        keys=[]
+        lens = []
+        feats = []
+        labels = []
+        keys = []
         for x in sample:
             feats.extend(x['feats'])
-
             labels.extend(x['labels'])
             keys.extend(x['keys'])
-  
+            lens.extend([x['feats'][0].shape[0]])
+        # print(lens)
+        # assert len(set(lens)) == 1
         labels = torch.tensor(labels)
 
         feats = [(x.T) for x in feats]

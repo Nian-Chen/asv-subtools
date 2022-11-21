@@ -11,7 +11,7 @@ import pandas as pd
 
 from libs.support.utils import to_device
 from .components import *
-
+from collections import deque
 ## TopVirtualLoss ✿
 class TopVirtualLoss(torch.nn.Module):
     """ This is a virtual loss class to be suitable for pipline scripts, such as train.py. And it requires
@@ -226,7 +226,17 @@ class MarginSoftmaxLoss(TopVirtualLoss):
              inter_loss=0.,
              ring_loss=0.,
              curricular=False,
-             reduction='mean', eps=1.0e-10, scale_init=False,label_smoothing = 0.0):
+             reduction='mean', 
+             eps=1.0e-10, 
+             scale_init=False,
+             label_smoothing=0.0,
+             dymatic_m=False,
+             total_iter=1000000,
+             cur_iter=0,
+             m_init=0.2,
+             m_final=0.5,
+             sqrt=False,
+             square=False):
 
         self.input_dim = input_dim
         self.num_targets = num_targets
@@ -245,7 +255,17 @@ class MarginSoftmaxLoss(TopVirtualLoss):
         self.ring_loss = ring_loss
         self.lambda_m = 1
         self.curricular = CurricularMarginComponent() if curricular else None
-
+        # dymatic margin(increase)
+        self.dymatic_m = dymatic_m
+        self.total_iter = total_iter
+        self.cur_iter = cur_iter
+        self.m_init = m_init
+        self.m_final = m_final
+        self.sqrt = sqrt
+        self.square = square
+        self.postion = deque(list(range(cur_iter, total_iter)))
+        
+        
         if self.ring_loss > 0:
             self.r = torch.nn.Parameter(torch.tensor(20.))
             self.feature_normalize = False
@@ -321,7 +341,22 @@ class MarginSoftmaxLoss(TopVirtualLoss):
                 inter_cosine_theta = torch.softmax(self.s * cosine_theta, dim=1)
                 inter_cosine_theta_target = inter_cosine_theta.gather(1, targets.unsqueeze(1))
                 inter_loss = torch.log((inter_cosine_theta.sum(dim=1) - inter_cosine_theta_target)/(self.num_targets - 1) + self.eps).mean()
-
+            # dymatic margin(increase)
+            if self.dymatic_m == True:
+                if len(self.postion) != 0:
+                    current_postion = self.postion.popleft()
+                    # print("current_postion", current_postion)
+                    alpha = current_postion/self.total_iter
+                    assert (self.sqrt and self.square) == False
+                    if self.sqrt:
+                        alpha = np.sqrt(alpha)
+                    elif self.square:
+                        alpha = np.square(alpha)
+                    # print(f"alpha:{alpha}")
+                    self.m = self.m_init + alpha * (self.m_final - self.m_init)
+                    print(f"margin:{m}")
+                    if current_postion % 10 == 0:
+                        os.system(f'echo current_postion={current_postion}, alpha={alpha}, margin={self.m} >> log_dynamic_margin.txt')
             if self.method == "am":
                 penalty_cosine_theta = cosine_theta_target - self.m
                 if self.double:

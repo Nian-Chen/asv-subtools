@@ -26,12 +26,20 @@ def for_extract_embedding(maxChunk=10000, isMatrix=True):
 
             with torch.no_grad():
                 if isMatrix:
+                    # (nframes, feature-dim) --> (1,feature-dim, nframes)
                     input = torch.tensor(input)
                     input = torch.unsqueeze(input, dim = 0)
                     input = input.transpose(1,2)
 
                 input = utils.to_device(self, input)
+
                 num_frames = input.shape[2]
+                
+                if hasattr(self, "use_w2v2"):
+                    maxChunk = 100 * 16000 # duration of each chunck for extracting embeddings: 100 seconds(100 * 16000 nframes)
+                else:
+                    maxChunk = 10000
+                
                 num_split = (num_frames + maxChunk - 1) // maxChunk
                 split_size = num_frames // num_split
                 

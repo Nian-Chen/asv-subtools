@@ -16,6 +16,7 @@ use_gpu=false
 gpu_id=""
 max_chunk=10000
 force=false
+use_w2v2=false
 sleep_time=3
 feat_config=config/feat_conf.yaml
 nnet_config=config/nnet.config
@@ -37,7 +38,7 @@ fi
 srcdir=$1
 data=$2
 dir=$3
-
+# echo "!!!!!!!!!!!use_w2v2=$use_w2v2"
 # Check
 mkdir -p $dir/log
 
@@ -90,7 +91,7 @@ if [ $stage -le 1 ]; then
           $cmd --gpu 1 ${dir}/log/extract.$g.log \
             python3 subtools/pytorch/pipeline/onestep/extract_embeddings_online.py --use-gpu=$use_gpu --gpu-id="$gpu_id" \
                     --data-type=$data_type --de-silence=$de_silence --amp-th=$amp_th --max-chunk=$max_chunk \
-                    --feat-config=$srcdir/$feat_config --nnet-config=$srcdir/$nnet_config \
+                    --feat-config=$srcdir/$feat_config --nnet-config=$srcdir/$nnet_config  --use_w2v2=$use_w2v2 \
                     "$srcdir/$model" "`echo $wavs | sed s/JOB/$g/g`" "`echo $output | sed s/JOB/$g/g`" || exit 1 &
           sleep $sleep_time
         pids="$pids $!"

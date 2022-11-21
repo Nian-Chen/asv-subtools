@@ -9,5 +9,6 @@ matplotlib
 tensorboard
 tensorboardX
 tqdm>=4.42.0
+transformers==4.19.0
 # progressbar
 # progressbar2
