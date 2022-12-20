@@ -541,6 +541,12 @@ Here, this is a ECAPA benchmark model. And the training script is available in [
 |Submean|1.045|0.904|1.330|1.211|2.430|2.303|
 |AS-Norm|0.991|0.856|-|-|-|-|
 ---
+Here, this is a PTM-based ECAPA model using WavLM(only 10 layers). And the training script is available in [subtools/pytorch/launcher/runPTM_EcapaXvector_online_fixedchunk.py](./pytorch/launcher/runPTM_EcapaXvector_online_fixedchunk.py). For more details, see it also. (experiments conducted by Zhicong Chen) ==2022-11-21==
+|EER%|vox1-O|vox1-O-clean|vox1-E|vox1-E-clean|vox1-H|vox1-H-clean|
+| :--: | :--: | :--: | :--: | :--: | :--: | :--: |
+|Submean|0.986|0.883|1.023|0.922|1.829|1.691|
+|AS-Norm|0.917|0.755|-|-|-|-|
+---
 ### [2] OLR Challenge 2020 Baseline Recipe [Language Identification]
 
 OLR Challenge 2020 is closed now.
