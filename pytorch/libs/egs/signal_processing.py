@@ -34,7 +34,6 @@ def de_silence(sig,sr=16000,win_len=0.1,min_eng=50):
     
     """
     duration = len(sig[0])
-
     voc_block_len = int(win_len*sr)
     min_voc_eng = min_eng / (1<<15)
 

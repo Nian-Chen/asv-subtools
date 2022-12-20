@@ -20,6 +20,7 @@ from .signal_processing import de_silence
 from libs.egs.augmentation import *
 from libs.egs.kaldi_features import InputSequenceNormalization
 from collections import deque
+import os
 torchaudio_backend = get_torchaudio_backend()
 torchaudio.set_audio_backend(torchaudio_backend)
 
@@ -232,6 +233,7 @@ def random_chunk(data,chunk_len=2.015):
         waveform = sample['wav'] 
         duration_sample=int(sample['lens']*(sample['wav'].shape[1]))
         snt_len_sample = int(chunk_len*sample['sample_rate'])
+        # print(f"snt_len_sample:{snt_len_sample}")
         if duration_sample > snt_len_sample:
             start = random.randint(0, duration_sample - snt_len_sample - 1)
             stop = start + snt_len_sample
@@ -242,6 +244,7 @@ def random_chunk(data,chunk_len=2.015):
         sample['lens'] = torch.ones(waveform.shape[0])
         yield sample
 
+# 只适用于num_workers=0，那样训练速度太慢，待完善
 class dynamic_random_chunk(object):
     def __init__(self, batch_size=4, total_iter=10, chunk_len_init=2.0, chunk_len_final=6.0, cur_iter=0, sqrt=False, square=False):
         self.batch_size = batch_size
@@ -266,16 +269,16 @@ class dynamic_random_chunk(object):
                 current_postion = self.postion.popleft()
                 # print(self.postion)
                 if current_postion % self.batch_size == 0:
-                    # print("current_postion", current_postion)
+                    # print("current_postion:", current_postion/self.batch_size)
                     alpha = current_postion/(self.total_iter * self.batch_size)
                     assert (self.sqrt and self.square) == False
                     if self.sqrt:
                         alpha = np.sqrt(alpha)
                     elif self.square:
                         alpha = np.square(alpha)
-                    # print(alpha)
+                    # print("alpha:", alpha)
                     self.chunk_len = self.chunk_len_init + alpha * (self.chunk_len_final - self.chunk_len_init)
-                # print(self.chunk_len)
+                # print("chunk_len:", self.chunk_len)
             waveform = sample['wav'] 
             duration_sample=int(sample['lens']*(sample['wav'].shape[1]))
             snt_len_sample = int(self.chunk_len*sample['sample_rate'])
@@ -287,6 +290,8 @@ class dynamic_random_chunk(object):
                 repeat_num = math.ceil(snt_len_sample/duration_sample)
                 sample['wav'] = waveform[:,:duration_sample].repeat(1,repeat_num)[:,:snt_len_sample]
             sample['lens'] = torch.ones(waveform.shape[0])
+            if current_postion % (self.batch_size * 100) == 0:
+                os.system(f'echo current_postion={current_postion/self.batch_size}, alpha={alpha}, dur={snt_len_sample/16000.0} >> log_dynamic_dur.txt')
             yield sample
         
 

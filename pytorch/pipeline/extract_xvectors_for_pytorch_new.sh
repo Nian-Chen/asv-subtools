@@ -88,10 +88,10 @@ if [ $stage -le 1 ]; then
       if $use_gpu; then
         pids=""
         for g in $(seq $nj); do
-          $cmd --gpu 1 ${dir}/log/extract.$g.log \
-            python3 subtools/pytorch/pipeline/onestep/extract_embeddings_online.py --use-gpu=$use_gpu --gpu-id="$gpu_id" \
+           $cmd --gpu 1 ${dir}/log/extract.$g.log \
+           python3 subtools/pytorch/pipeline/onestep/extract_embeddings_online.py --use-gpu=$use_gpu --gpu-id="$gpu_id" \
                     --data-type=$data_type --de-silence=$de_silence --amp-th=$amp_th --max-chunk=$max_chunk \
-                    --feat-config=$srcdir/$feat_config --nnet-config=$srcdir/$nnet_config  --use_w2v2=$use_w2v2 \
+                    --feat-config=$srcdir/$feat_config --nnet-config=$srcdir/$nnet_config  --use_w2v2=$use_w2v2 --job-index=$g \
                     "$srcdir/$model" "`echo $wavs | sed s/JOB/$g/g`" "`echo $output | sed s/JOB/$g/g`" || exit 1 &
           sleep $sleep_time
         pids="$pids $!"

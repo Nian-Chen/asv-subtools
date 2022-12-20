@@ -12,6 +12,7 @@ import pandas as pd
 from libs.support.utils import to_device
 from .components import *
 from collections import deque
+import os
 ## TopVirtualLoss ✿
 class TopVirtualLoss(torch.nn.Module):
     """ This is a virtual loss class to be suitable for pipline scripts, such as train.py. And it requires
@@ -72,6 +73,8 @@ class TopVirtualLoss(torch.nn.Module):
         with torch.no_grad():
             prediction = self.predict(outputs)
             num_correct = (targets==prediction).sum()
+            # print(targets)
+            # print(prediction)
 
         return num_correct.item()/len(targets)
 
@@ -354,8 +357,8 @@ class MarginSoftmaxLoss(TopVirtualLoss):
                         alpha = np.square(alpha)
                     # print(f"alpha:{alpha}")
                     self.m = self.m_init + alpha * (self.m_final - self.m_init)
-                    print(f"margin:{m}")
-                    if current_postion % 10 == 0:
+                    # print(f"margin:{self.m}")
+                    if current_postion % 100 == 0:
                         os.system(f'echo current_postion={current_postion}, alpha={alpha}, margin={self.m} >> log_dynamic_margin.txt')
             if self.method == "am":
                 penalty_cosine_theta = cosine_theta_target - self.m

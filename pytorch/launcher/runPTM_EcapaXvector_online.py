@@ -177,7 +177,10 @@ preprocess_nj = 20
 # The number of epochs are supposed to be three-fold(10 -> 30)
 whole_utt = True
 random_segment = False # Works only when whole_utt is False
-seg_dur = 2.015
+seg_dur = 3.015
+# seg_dur = 6.015
+# dynamic_dur = True
+dynamic_dur = False
 amp_th = 100
 de_silence = False
 vad_wav_savdir = "export/vad_wav"
@@ -194,16 +197,13 @@ valid_utts = 2048
 valid_chunk_num = 2
 valid_fix_chunk_num = False
 
-data_type = 'shard'
-num_utts_per_shard = 2000
-shard_dir = '/work/w2v2_sv/shard_whole'
-# shard_dir = 'export/yourpath'
 ##--------------------------------------------------##
 # Prepare speech augmention csv files.
 pre_rirmusan = args.pre_rirmusan  # whether skip this stage.
 openrir_folder = "export/path"  # where contains RIRS_NOISES folder.
 musan_folder = "export/path"    # where contains musan folder.
-csv_aug_folder = "exp/aug_csv"  # csv file location.
+# csv_aug_folder = "exp/aug_csv"  # csv file location.
+csv_aug_folder = "exp/aug_csv_6s"
 savewav_folder = "export/path"  # save the noise seg into SSD.
 max_noise_len = seg_dur  # The max dur of noise.
 ##--------------------------------------------------##
@@ -212,19 +212,32 @@ use_amp = args.use_amp
 skip_nan_batch = args.skip_nan_batch
 accum_grad = args.accum_grad
 
+
 use_gpu = args.use_gpu  # Default true.
 # If true, save much training time but require a little more gpu-memory.
 benchmark = args.benchmark
 gpu_id = args.gpu_id  # If NULL, then it will be auto-specified.
 run_lr_finder = args.run_lr_finder
-
+# print(f"gpu_id:{args.gpu_id}")
 use_w2v2 = True
-# The ft_sec_stage shoud be manually set for PTM-base training
+# PTM =["w2v2", "hubert", "unispeech-sat", "wavlm"]
+PTM = "wavlm"
+PTM_nlayer = 10 # -1 means using layer sum
+# PTM_dir = "/data/huggingface/models/wav2vec2-large-xlsr-53"
+# PTM_dir = "/data/huggingface/models/wav2vec2-large-en"
+PTM_dir = "/data/huggingface/models/wavlm_model"
+# PTM_dir = "/data/huggingface/models/hubert_model"
+# PTM_dir = "/data/huggingface/models/unispeech_sat_model"
+
+# The ft_sec_stage shoud be manually set for PTM-based training
 # When the ft_sec_stage is true, we unfreeze the feature extractor and set the max_lr to 5e-5
-ft_sec_stage = False
-epochs_first_stage = 30
-epochs_second_stage = 30
+ft_sec_stage = True
+epochs_first_stage = 20
+epochs_second_stage = 20
 total_epochs = epochs_first_stage + epochs_second_stage
+# large margin training
+ft_large_margin = False
+ft_lm_epochs = 5
 # for first stage
 epochs = epochs_first_stage
 # train_stage = max(-1, args.train_stage)
@@ -232,8 +245,21 @@ train_stage = -1
 if ft_sec_stage:
     epochs = total_epochs # Total epochs to train. It is important.
     train_stage = epochs_first_stage
-total_iter = total_epochs * 2129 # for voxceleb2 when n_gpus is 4 and total_btz is 512
+# for dynamic
+epoch_iters = 2129 # for voxceleb2 when n_gpus is 4 and total_btz is 512
+# print epoch_iters in stage 3 for detail
+total_iter = total_epochs * epoch_iters 
 cur_iter = int((train_stage/total_epochs) * total_iter) if train_stage != -1 else 0
+if ft_large_margin:
+    # Since the longer seg_dur may cause GPU OOM, total_btz: 512 -> 256
+    assert ft_sec_stage == True
+    epochs = total_epochs + ft_lm_epochs
+    train_stage = total_epochs
+    # for dynamic
+    epoch_iters = 2129 * 2
+    total_iter = ft_lm_epochs * epoch_iters
+    cur_iter = 0
+
 compute_batch_num_valid = 10
 # About validation computation and loss reporting. If report_times_every_epoch is not None,
 report_interval_iters = 100
@@ -250,18 +276,24 @@ traindata = "data/raw/voxceleb2_dev"
 traindata_for_egs = "data/raw/voxceleb2_dev_egs"
 # egs_dir = "exp/egs/voxceleb2_dev_vad"
 egs_dir = "exp/egs/voxceleb2_dev_whole"
+data_type = 'shard'
+num_utts_per_shard = 2000
+shard_dir = '/work/w2v2_sv/shard_whole'
+# shard_dir = 'export/yourpath'
 egs_conf = "subtools/conf/egs_pre_sre_ecapa.yaml"
 # egs_conf="subtools/conf/egs_pre_sre.yaml"
 # model_blueprint = "subtools/pytorch/model/ecapa_tdnn_xvector.py"
 model_blueprint = "subtools/pytorch/model/ecapa_tdnn_xvector_ssl.py"
 # model_dir = "exp/ecapa_c1024"
-model_dir = "exp/ecapa_tdnn_xvector_ssl_whole"
+model_dir = "exp/ecapa_tdnn_xvector_ssl_whole_3s"
 
 ##--------------------------------------------------##
 # Define model_params by model_blueprint w.r.t your model's __init__(model_params).
-
 model_params = {
     "use_w2v2":use_w2v2,
+    "PTM":PTM, 
+    "PTM_dir":PTM_dir,
+    "PTM_nlayer":PTM_nlayer,
     "aug_dropout": 0., "tail_dropout": 0.,
     "training": True, "extracted_embedding": "near",
     "ecapa_params": {"channels": 1024,
@@ -294,7 +326,7 @@ model_params = {
         # "method": "aam", "m": 0.2, "feature_normalize": True,
         # "s": 30, "mhe_loss": False, "mhe_w": 0.01},
     "margin_loss_params": {
-        "method": "aam", "m": 0.2, "feature_normalize": True, "s": 30, "mhe_loss": False, "mhe_w": 0.01,"dymatic_m": False, "total_iter":total_iter, "cur_iter": cur_iter, "m_init": 0.2, "m_final": 0.5,"sqrt": False, "square": False},
+        "method": "aam", "m": 0.5, "feature_normalize": True, "s": 30, "mhe_loss": False, "mhe_w": 0.01,"dymatic_m": False, "total_iter":total_iter, "cur_iter": cur_iter, "m_init": 0.2, "m_final": 0.5,"sqrt": False, "square": False},
     "use_step": False,
     "step_params": {
         "margin_warm":False,
@@ -339,7 +371,8 @@ lr_scheduler_params = {
 
 if ft_sec_stage:
     lr_scheduler_params["cyclic.max_lr"] = 5e-5
-    
+if ft_large_margin:
+    lr_scheduler_params["cyclic.max_lr"] = 1e-5
 
 ##--------------------------------------------------##
 ##
@@ -406,10 +439,15 @@ if stage <= 3 <= endstage:
         egs_params = yaml.load(fin, Loader=yaml.FullLoader)
         egs_params['dataset_conf']['csv_aug_folder'] = csv_aug_folder
         egs_params['dataset_conf']['use_w2v2'] = True if use_w2v2 else False
-        # egs_params['dataset_conf']['batch_conf']['batch_size'] = 4
-        egs_params['dataset_conf']['dynamic_random_chunk'] = False
-        batch_size = egs_params['dataset_conf']['batch_conf']['batch_size']
-        egs_params['dataset_conf']['dynamic_conf'] = {"batch_size":batch_size, "total_iter":total_iter, "cur_iter":cur_iter, "chunk_len_init":2.0, "chunk_len_final":6.0, "sqrt":False, "square":False}
+        if ft_large_margin:
+            egs_params['dataset_conf']['batch_conf']['batch_size'] = 64
+        egs_params['dataset_conf']['random_chunk_size'] = seg_dur
+        egs_params['data_loader_conf']['prefetch_factor'] = 20
+        if dynamic_dur:
+            egs_params['dataset_conf']['dynamic_random_chunk'] = True
+            # egs_params['data_loader_conf']['num_workers'] = 0
+            batch_size = egs_params['dataset_conf']['batch_conf']['batch_size']
+            egs_params['dataset_conf']['dynamic_conf'] = {"batch_size":batch_size, "total_iter":total_iter, "cur_iter":cur_iter, "chunk_len_init":2.0, "chunk_len_final":6.0, "sqrt":False, "square":True}
         
     bunch, info = egs.BaseBunch.get_bunch_from_egsdir(egs_dir, egs_params)
     feat_extraction_config = copy.deepcopy(
@@ -431,24 +469,26 @@ if stage <= 3 <= endstage:
     if use_w2v2:
         # Download the PTM from https://huggingface.co/models
         # All the PTM paths should match the paths used in ecapa_tdnn_xvector_ssl.py
-        
-        # w2v2_path = "/work/OLR2021_XLSR/XLSR-53/pytorch_model.bin"
-        # state_dict = torch.load(w2v2_path, map_location="cpu")
-        
         # We regard all the PTMs as model.wav2vec2
-        # The state_dict of unispeech_sat model starts with "unispeech_sat." which needed to be replaced with 'wav2vec2'.
-        # w2v2_unisat_path = "/data/huggingface/models/unispeech_sat_model/pytorch_model_rename.bin"
-        # state_dict = torch.load(w2v2_unisat_path, map_location="cpu")
-        
-        # The state_dict of hubert model starts with "hubert." which needed to be replaced with 'wav2vec2'.
-        # w2v2_hubert_path = "/data/huggingface/models/hubert_model/pytorch_model_rename.bin"
-        # state_dict = torch.load(w2v2_hubert_path, map_location="cpu")
-        
-        # The state_dict of wavlm model starts with "wavlm." which needed to be replaced with 'wav2vec2'.
-        w2v2_wavlm_path = "/data/huggingface/models/wavlm_model/pytorch_model_rename.bin"
-        state_dict = torch.load(w2v2_wavlm_path, map_location="cpu")
-        
+        if PTM == "w2v2":
+            w2v2_path = PTM_dir + "/pytorch_model.bin"
+            state_dict = torch.load(w2v2_path, map_location="cpu")
+        elif PTM == "hubert":
+            # The state_dict of hubert model starts with "hubert." which needed to be replaced with 'wav2vec2'.
+            w2v2_hubert_path = PTM_dir + "/pytorch_model_rename.bin"
+            state_dict = torch.load(w2v2_hubert_path, map_location="cpu")
+        elif PTM == "unispeech-sat":
+            # The state_dict of unispeech_sat model starts with "unispeech_sat." which needed to be replaced with 'wav2vec2'.
+            w2v2_unisat_path = PTM_dir + "/pytorch_model_rename.bin"
+            state_dict = torch.load(w2v2_unisat_path, map_location="cpu")
+        elif PTM == "wavlm":
+            # The state_dict of wavlm model starts with "wavlm." which needed to be replaced with 'wav2vec2'.
+            w2v2_wavlm_path = PTM_dir + "/pytorch_model_rename.bin"
+            state_dict = torch.load(w2v2_wavlm_path, map_location="cpu")
+        else:
+             raise ValueError("Use PTM among [w2v2, hubert, unispeech-sat, wavlm]")
         # It is recommended to set strict=True to check whether the parameters of PTM are successfully loaded from the error message, and then set it to False.
+        # model.load_state_dict(state_dict,strict=True)
         model.load_state_dict(state_dict,strict=False)
         model.wav2vec2.config.mask_time_prob = model.wav2vec2.config.mask_feature_prob = 0.0
         model.wav2vec2.config.layerdrop = 0.00
@@ -460,7 +500,7 @@ if stage <= 3 <= endstage:
         if not ft_sec_stage:
             model.freeze_base_model()
     epoch_iters = (info['epoch_iters']//accum_grad)
-    print(f"epoch_iters:{epoch_iters}")
+    # print(f"epoch_iters:{epoch_iters}")
     if hasattr(model,'margin_warm'):
         model.margin_warm.update_step_range(epoch_iters)
 
@@ -523,14 +563,16 @@ if stage <= 4 <= endstage and utils.is_main_training():
 
     to_extracted_positions = ["near"]  # Define this w.r.t model_blueprint.
     # All dataset should be in dataroot/prefix.
-    to_extracted_data = ["voxceleb1", "voxceleb2_dev"]
+    # to_extracted_data = ["voxceleb1", "voxceleb2_dev"]
+    to_extracted_data = ["voxceleb1_6s", "voxceleb2_dev_6s"]
     # It is model's name, such as 10.params or final.params (suffix is w.r.t package).
-    to_extracted_epochs = ["3_cycle"]
+    to_extracted_epochs = ["65"]
+    # to_extracted_epochs = ["aver_last5_fusion"]
 
-    nj = 8
+    nj = 10
     force = True
     use_gpu = True
-    gpu_id = ""
+    gpu_id_extract = "3,4,5,6,7"
     sleep_time = 10
     feat_config = "feat_conf.yaml"
     # max_chunk = 10000
@@ -575,10 +617,10 @@ if stage <= 4 <= endstage and utils.is_main_training():
                     kaldi_common.execute_command("bash subtools/pytorch/pipeline/extract_xvectors_for_pytorch_new.sh "
                                                  " --model {model_file} --nj {nj} --use-gpu {use_gpu} --gpu-id '{gpu_id}' "
                                                  " --data-type '{data_type}' --de-silence {de_silence}  --amp-th {amp_th} --max-chunk {max_chunk} "
-                                                 " --force {force} --nnet-config config/{extract_config} --feat-config config/{feat_config} "
-                                                 "{model_dir} {datadir} {outdir}".format(model_file=model_file, nj=nj,
-                                                                                         use_gpu=str(use_gpu).lower(), gpu_id=gpu_id, force=str(force).lower(), extract_config=extract_config,
-                                                                                         feat_config=feat_config, data_type=data_type_emb, de_silence=str(de_silence).lower(), amp_th=amp_th,use_w2v2=str(use_w2v2).lower(),
+                                                 " --force {force} --nnet-config config/{extract_config} --feat-config config/{feat_config} --use_w2v2 {use_w2v2} "
+                                                 "{model_dir} {datadir} {outdir} ".format(model_file=model_file, nj=nj,
+                                                                                         use_gpu=str(use_gpu).lower(), gpu_id=gpu_id_extract, force=str(force).lower(), extract_config=extract_config,
+                                                                                      feat_config=feat_config, data_type=data_type_emb, de_silence=str(de_silence).lower(), amp_th=amp_th,use_w2v2=str(use_w2v2).lower(),
                                                                                           max_chunk=max_chunk, model_dir=model_dir, datadir=datadir, outdir=outdir))
     except BaseException as e:
         if not isinstance(e, KeyboardInterrupt):

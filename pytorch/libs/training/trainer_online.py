@@ -258,13 +258,17 @@ class SimpleTrainer(_BaseTrainer):
         # processes.
         else:
             context = nullcontext
+        # print(f"context:{context}")
+        # print(f"model.device:{next(model.parameters()).device}")
+        # print(f"x.grad:{input_list[0].requires_grad}")
         with context():
             # Managing automatic mixed precision  (Leo 2021-11-08)
             with torch.cuda.amp.autocast(self.scaler is not None):
 
                 loss = model.get_loss(model_forward(*input_list), targets)/self.params["accum_grad"]
                 # loss = model_forward(inputs, targets)/self.params["accum_grad"]
-
+            # print(f"loss:{loss}")
+            # print(f"loss.grad:{loss.requires_grad}")
             if self.params["use_amp"]:
                 self.scaler.scale(loss).backward()
             else:
@@ -419,8 +423,10 @@ class SimpleTrainer(_BaseTrainer):
                         elif current_lr <= lr_scheduler.min_lr and lr_scheduler.is_reduce_point(self.training_point):
                             self.save_model(mod="iter",train_lr=self.train_lr,valid_loss=valid_loss)
 
+                    # if lr_scheduler.is_cycle_point(self.training_point):
+                        # self.cycle_point+=1
                     if lr_scheduler.is_cycle_point(self.training_point):
-                        self.cycle_point+=1
+                        self.cycle_point = lr_scheduler.get_cycle_point(self.training_point)
                         self.save_model(mod="cycle",train_lr=self.train_lr,valid_loss=valid_loss)
             else:
                 # For some pytorch lr_schedulers, but it is not available for all.
@@ -461,15 +467,13 @@ class SimpleTrainer(_BaseTrainer):
             stop_training =  torch.zeros(1).to(device)
 
             with model_context:
-                # epochs --> epochs + 1
-                # range: [0, 1, 2 ,,, 9] --> [0, 1, 2 ,,, 10]
-                for this_epoch in range(start_epoch, epochs + 1):
+                for this_epoch in range(start_epoch, epochs + 2):
                     # In case the uneven data in different ranks when ddp training, 
                     # here we design a more epoch for sub-ranks to ensure the main rank can broadcasting.
                     if utils.is_main_training:
-                        if this_epoch ==  epochs: # skip the last+1 epoch
+                        # Some ranks have already finished and started the next epoch, while some have not finished the current epoch yet
+                        if this_epoch ==  epochs + 1: 
                             stop_training =  torch.ones(1).to(device)
-                    # range of training_point[0]: [1, 2 ,3 ,,, 10] --> [1, 2 ,3 ,,, 11]
                     self.training_point[0]+=1
                     data.train_loader.dataset.set_epoch(this_epoch)
 

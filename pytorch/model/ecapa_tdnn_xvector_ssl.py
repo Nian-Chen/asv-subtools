@@ -1,11 +1,12 @@
 import yaml
-from transformers import Wav2Vec2Model, Wav2Vec2Config, UniSpeechSatConfig, UniSpeechSatModel, WavLMConfig, WavLMModel, HubertModel, HubertConfig
+from transformers import Wav2Vec2Config, HubertConfig, UniSpeechSatConfig, WavLMConfig
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
 import sys
 sys.path.insert(0, 'subtools/pytorch')
+from libs.nnet.PTMs import *
 import libs.support.utils as utils
 from libs.nnet import *
 # Copyright xmuspeech (Author: Leo 2022-05-27)
@@ -112,7 +113,7 @@ class SE_Connect(nn.Module):
         
 class SE_Connect_layersum(nn.Module):
     def __init__(self, channels, bottleneck=128):
-        super(SE_Connect, self).__init__()
+        super(SE_Connect_layersum, self).__init__()
         self.se = nn.Sequential(
             nn.AdaptiveAvgPool1d(1),
             nn.Conv1d(channels, bottleneck, kernel_size=1, padding=0),
@@ -123,7 +124,7 @@ class SE_Connect_layersum(nn.Module):
 
     def forward(self, input):
         layer_weights = self.se(input).softmax(dim=1)
-        return input * layer_weights
+        return input * layer_weights, layer_weights
 
 ''' SE-Res2Block.
 '''
@@ -211,8 +212,8 @@ class AttentiveStatsPool(nn.Module):
 '''
 
 
-class ECAPA_TDNN(TopVirtualNnet):
-    def init(self, inputs_dim, num_targets, aug_dropout=0., tail_dropout=0., training=True, use_w2v2=False,
+class ECAPA_TDNN_PTM(TopVirtualNnet):
+    def init(self, inputs_dim, num_targets, aug_dropout=0., tail_dropout=0., training=True, use_w2v2=False, PTM="wavlm", PTM_nlayer=10, PTM_dir="", PTM_dropout=0.05,
              extracted_embedding="near", mixup=False, mixup_alpha=1.0, pooling="ecpa-attentive", pooling_params={},
              ecapa_params={}, fc1=False, fc1_params={}, fc2_params={},
              margin_loss=True, margin_loss_params={}, use_step=False, step_params={}, transfer_from="softmax_loss", lncl_Loss=False):
@@ -282,46 +283,54 @@ class ECAPA_TDNN(TopVirtualNnet):
             "p": False, "p_tuple": (0.5, 0.1)
         }
         if use_w2v2:
-            # 只用一层tdnn加pooling
-            self.output_embeddings_encoder = False
+            assert PTM in ["w2v2", "hubert", "unispeech-sat", "wavlm"], f"Use PTM among [w2v2, hubert, unispeech-sat, wavlm]"
+            assert PTM_dir != "", "The dir of the PTM should not be empty"
+            self.simple_classifier = False
             self.use_w2v2 = True
-            # w2v2_path = "/data/huggingface/models/wav2vec2-large-xlsr-53"
-            # config = Wav2Vec2Config.from_pretrained(w2v2_path)
-            # config.num_hidden_layers = 15
-            # self.wav2vec2 = Wav2Vec2Model(config)
-            
-            
-            # w2v2_hubert_path = "/data/huggingface/models/hubert_model"
-            # config = HubertConfig.from_pretrained(w2v2_hubert_path)
-            # config.num_hidden_layers = 5
-            # self.wav2vec2 = HubertModel(config)
-            
-            # w2v2_unisat_path = "/data/huggingface/models/unispeech_sat_model"
-            # config = UniSpeechSatConfig.from_pretrained(w2v2_unisat_path)
-            # config.num_hidden_layers = 10
-            # self.wav2vec2 = UniSpeechSatModel(config)
-            
-            w2v2_wavlm_path = "/work/w2v2_sv/wavlm_model"
-            config = WavLMConfig.from_pretrained(w2v2_wavlm_path)
-            config.num_hidden_layers = 10
-            
+            if PTM_nlayer == -1:
+                self.use_weighted_layer_sum = False
+                self.use_SE_layer_sum = True
+                PTM_nlayer = 10# 24 for large mdoel, 12 for base model
+                config.layerdrop = PTM_dropout
+            else:
+                self.use_SE_layer_sum = False
+                self.use_weighted_layer_sum = False
+            if PTM == "w2v2":
+                config = Wav2Vec2Config.from_pretrained(PTM_dir)
+                config.num_hidden_layers = PTM_nlayer
+                config.attention_dropout = config.hidden_dropout = config.feat_proj_dropout = PTM_dropout
+                config.layerdrop = PTM_dropout
+                self.PTM = Wav2Vec2Model(config)
+            elif PTM == "hubert":
+                config = HubertConfig.from_pretrained(PTM_dir)
+                config.num_hidden_layers = PTM_nlayer
+                config.attention_dropout = config.hidden_dropout = config.feat_proj_dropout = PTM_dropout
+                config.layerdrop = PTM_dropout
+                self.PTM = HubertModel(config)
+            elif PTM == "unispeech-sat":
+                config = UniSpeechSatConfig.from_pretrained(PTM_dir)
+                config.num_hidden_layers = PTM_nlayer
+                config.attention_dropout = config.hidden_dropout = config.feat_proj_dropout = PTM_dropout
+                config.layerdrop = PTM_dropout
+                self.PTM = UniSpeechSatModel(config)
+            elif PTM == "wavlm":
+                config = WavLMConfig.from_pretrained(PTM_dir)
+                config.num_hidden_layers = PTM_nlayer
+                config.attention_dropout = config.hidden_dropout = config.feat_proj_dropout = PTM_dropout
+                config.layerdrop = PTM_dropout
+                self.PTM = WavLMModel(config)
             # two forms of weighting the hidden_states from PTM
-            self.use_SE_layer_sum = False
-            self.use_weighted_layer_sum = False
             assert (self.use_SE_layer_sum and self.use_weighted_layer_sum) == False
             if self.use_weighted_layer_sum:
-                config.num_hidden_layers = 24
-                self.layer_weights = nn.Parameter(torch.ones(25) / 25)
+                self.layer_weights = nn.Parameter(torch.ones(PTM_nlayer+1) / (PTM_nlayer+1))
             if self.use_SE_layer_sum:
-                config.num_hidden_layers = 24
                 # self.SE_layersum = SE_Res2Block(
                 # config.num_hidden_layers, config.num_hidden_layers, kernel_size=3, dilation=2, scale=5, bn_params=ecapa_params)
-                self.SE_layersum = SE_Connect_layersum(num_layers)
-            self.wav2vec2 = WavLMModel(config)
+                self.SE_layersum = SE_Connect_layersum(PTM_nlayer+1)
             inputs_dim = config.hidden_size
         else:
             self.use_w2v2 = False
-            self.wav2vec2 = None
+            self.PTM = None
             inputs_dim = 80
         self.use_step = use_step
         self.step_params = step_params
@@ -342,7 +351,7 @@ class ECAPA_TDNN(TopVirtualNnet):
         self.embd_dim = embd_dim
         channels = ecapa_params["channels"]
         self.mixup = Mixup(alpha=mixup_alpha) if mixup else None
-        if not self.output_embeddings_encoder:
+        if not self.simple_classifier:
             self.layer1 = ReluBatchNormTdnnLayer(
                 inputs_dim, channels, [-2, -1, 0, 1, 2], **ecapa_params)
             
@@ -401,19 +410,22 @@ class ECAPA_TDNN(TopVirtualNnet):
                 self.fc1 = ReluBatchNormTdnnLayer(
                     mfa_conv * 2, embd_dim, **fc1_params) if fc1 else None
         else:
-            # cat_channels = channels * 3
-            cat_channels = channels
-            mfa_conv = ecapa_params["mfa_conv"]
+            # cat_channels = inputs_dim * 3
+            cat_channels = inputs_dim
+            mfa_conv = inputs_dim
+            # mfa_conv = ecapa_params["mfa_conv"]
             self.mfa = ReluBatchNormTdnnLayer(cat_channels, mfa_conv, **ecapa_params)
             # Pooling
             stddev = pooling_params.pop("stddev")
-            self.stats = AttentiveStatsPool(
-                mfa_conv, pooling_params["hidden_size"], pooling_params["time_attention"])
+            # self.stats = AttentiveStatsPool(
+                # mfa_conv, pooling_params["hidden_size"], pooling_params["time_attention"])
+            self.stats = StatisticsPooling(mfa_conv, stddev=stddev)
             self.bn_stats = nn.BatchNorm1d(
                 mfa_conv * 2, **ecapa_params["bn_params"])
+            # self.bn_stats = nn.BatchNorm1d(
+                # mfa_conv, **ecapa_params["bn_params"])
             self.fc1 = ReluBatchNormTdnnLayer(
                 mfa_conv * 2, embd_dim, **fc1_params) if fc1 else None
-                
         self.tail_dropout = torch.nn.Dropout2d(
             p=tail_dropout) if tail_dropout > 0 else None
 
@@ -422,6 +434,8 @@ class ECAPA_TDNN(TopVirtualNnet):
         else:
             fc2_in_dim = mfa_conv * 2
         self.fc2 = ReluBatchNormTdnnLayer(fc2_in_dim, embd_dim, **fc2_params)
+        # self.fc2 = ReluBatchNormTdnnLayer(mfa_conv, embd_dim, **fc2_params)
+        # self.fc2 = nn.Linear(inputs_dim, embd_dim)
         self.tail_dropout = torch.nn.Dropout2d(
             p=tail_dropout) if tail_dropout > 0 else None
         # print("num_targets---------------",num_targets)
@@ -452,54 +466,57 @@ class ECAPA_TDNN(TopVirtualNnet):
         Calling this function will disable the gradient computation for the feature extractor so that its parameters
         will not be updated during training.
         """
-        # for param in self.wav2vec2.feature_extractor.parameters():
-            # param.requires_grad = False
-        if self.use_w2v2 and self.wav2vec2 is not None:
-            self.wav2vec2.feature_extractor._freeze_parameters()
+        if self.use_w2v2 and self.PTM is not None:
+            self.PTM.feature_extractor._freeze_parameters()
     def freeze_base_model(self):
         """
         Calling this function will disable the gradient computation for the base model so that its parameters will not
         be updated during training. Only the classification head will be updated.
         """
-        if self.use_w2v2 and self.wav2vec2 is not None:
-            for param in self.wav2vec2.parameters():
+        if self.use_w2v2 and self.PTM is not None:
+            for param in self.PTM.parameters():
                 param.requires_grad = False
             
     @torch.jit.unused
     @utils.for_device_free
     def forward(self, x, x_len: torch.Tensor=torch.empty(0)):
         # print(x.shape)
-        if self.use_w2v2 and self.wav2vec2 is not None:
+        if self.use_w2v2 and self.PTM is not None:
             # (128, 1, 16000) -> (128, 16000) -> (128, 50, 1024)
-            outputs = self.wav2vec2(input_values=x.squeeze(1), output_hidden_states=True)
+            outputs = self.PTM(input_values=x.squeeze(1), output_hidden_states=True)
             x = outputs[0]
             if self.use_weighted_layer_sum:
                 hidden_states = torch.stack(outputs.hidden_states, dim=1)
                 # (B,num_hidden_layers,T,dim)
                 norm_weights = nn.functional.softmax(self.layer_weights, dim=-1)
+                # print(f"layer_weights:{norm_weights}")
                 x = (hidden_states * norm_weights.view(-1, 1, 1)).sum(dim=1)
             if self.use_SE_layer_sum:
                 hidden_states = torch.stack(outputs.hidden_states, dim=1)
                 # (B,num_hidden_layers,T,dim)
                 bs, num_hidden_layers, T, dim = hidden_states.shape
-                x = self.SE_layersum(hidden_states.view(bs, num_hidden_layers, -1)).reshape(bs, num_hidden_layers, T, dim).sum(1)
+                x, layer_weights = self.SE_layersum(hidden_states.view(bs, num_hidden_layers, -1))
+                # print(f"layer_weights:{layer_weights}")
+                x = x.reshape(bs, num_hidden_layers, T, dim).sum(1)
             # mean normalization
             # x = (x - x.mean(1, keepdim=True))/ x.std(dim=1, keepdim=True)
             x = x - x.mean(1, keepdim=True)
             x = x.transpose(1,2)
             # print(x.shape)
-        if not self.output_embeddings_encoder:
+        if not self.simple_classifier:
             x = self.layer1(x)
             x1 = self.layer2(x)
             x2 = self.layer3(x+x1)
             x3 = self.layer4(x+x1+x2)
             x = torch.cat([x1, x2, x3], dim=1)
         x = self.mfa(x)
-        x = self.bn_stats(self.stats(x))
+        x = self.stats(x)
+        x = self.bn_stats(x)
         if len(x.shape) != 3:
             x = x.unsqueeze(dim=2)
         x = self.auto(self.fc1, x)
         x = self.fc2(x)
+        # x = self.fc2(x.transpose(1,2)).transpose(1,2)
         x = self.auto(self.tail_dropout, x)
         return x#, hs 
 
@@ -550,12 +567,13 @@ class ECAPA_TDNN(TopVirtualNnet):
         # return self.loss.accuracy
     @for_extract_embedding(maxChunk=10000, isMatrix=True)
     def extract_embedding(self, x):
-        if self.use_w2v2 and self.wav2vec2 is not None:
+        if self.use_w2v2 and self.PTM is not None:
             # (128, 1, 16000) -> (128, 16000) -> (128, 50, 1024)
-            x = self.wav2vec2(input_values=x.squeeze(1))[0]
+            x = self.PTM(input_values=x.squeeze(1))[0]
             # mean normalization
             # x = (x - x.mean(1, keepdim=True))/ x.std(dim=1, keepdim=True)
             x = x - x.mean(1, keepdim=True)
+            x = x.transpose(1,2)
     
         x = self.layer1(x)
         x1 = self.layer2(x)
@@ -701,28 +719,30 @@ if __name__ == '__main__':
     # x = torch.zeros(2,1, 16000)
     sys.path.insert(0, 'subtools/pytorch')
     import libs.egs.egs_online as egs
-    model = ECAPA_TDNN(inputs_dim=80, num_targets=1211,training=True,use_w2v2=True)
+    model = ECAPA_TDNN_PTM(inputs_dim=1024, num_targets=1211,training=True,use_w2v2=True,PTM="wavlm",PTM_nlayer=10,PTM_dir="/data/huggingface/models/wavlm_model")
     # print(model)
-    # egs_dir = "exp/egs/voxceleb2_dev_vad"
-    egs_dir = "exp/egs/voxceleb2_dev_whole"
+    egs_dir = "exp/egs/voxceleb2_dev_vad"
+    # egs_dir = "exp/egs/voxceleb2_dev_whole"
     # egs_conf="subtools/conf/egs_pre_sre_noaug.yaml"
-    egs_conf="subtools/conf/egs_pre_sre_ecapa.yaml"
+    # egs_conf="subtools/conf/egs_pre_sre_ecapa.yaml"
+    egs_conf="/work/kaldi/egs/xmuspeech/asv-subtools-PTM/subtools/conf/egs_pre_sre_nowavdrop.yaml"
     # csv_aug_folder = "exp/aug_csv"
     # speech_aug为true时，若csv_aug_folder为空，默认加高斯白噪声
     csv_aug_folder = ""
     with open(egs_conf,'r') as fin:
         egs_params = yaml.load(fin, Loader=yaml.FullLoader)
         egs_params['dataset_conf']['csv_aug_folder']=csv_aug_folder
-    egs_params['dataset_conf']['batch_conf']['batch_size'] = 10
+    egs_params['dataset_conf']['batch_conf']['batch_size'] = 2
     # egs_params['dataset_conf']['batch_conf']['batch_type'] = 'static_filtered'
-    egs_params['data_loader_conf']['num_workers'] = 0
+    egs_params['data_loader_conf']['num_workers'] = 1
+    # >0时 dataloader会复制成num_workers个子进程，导致主进程的dataloader的类init中的变量被重新赋值（popleft的操作无法全局连贯）
     # egs_params['data_loader_conf']['prefetch_factor'] = 1
     egs_params['dataset_conf']['shuffle'] = False
     egs_params['dataset_conf']['use_w2v2'] = True
     
-    egs_params['dataset_conf']['dynamic_random_chunk'] = True
+    egs_params['dataset_conf']['dynamic_random_chunk'] = False
     batch_size = egs_params['dataset_conf']['batch_conf']['batch_size']
-    egs_params['dataset_conf']['dynamic_conf'] = {"batch_size":batch_size, "total_iter":100, "cur_iter":50, "chunk_len_init":2.0, "chunk_len_final":6.0, "sqrt":False, "square":False}
+    egs_params['dataset_conf']['dynamic_conf'] = {"batch_size":batch_size, "total_iter":50, "cur_iter":0, "chunk_len_init":2.0, "chunk_len_final":6.0, "sqrt":False, "square":True}
     
     
     
@@ -732,6 +752,7 @@ if __name__ == '__main__':
 
     # inputs = next(iter(bunch.train_loader))
     for i in range(50):
+        print("!" * 20)
         inputs = next(iter(bunch.train_loader))
         # inputs = next(iter(bunch.valid_loader))
         # print(inputs[0].shape, inputs[1].shape)

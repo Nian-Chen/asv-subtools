@@ -142,7 +142,9 @@ class LRSchedulerWrapper():
             return True if training_point[2]%self.step_total==0 and training_point[2]>0 else False
 
         return False
-
+    def get_cycle_point(self, training_point):
+        assert self.name in ["cyclic", "1cycle"]
+        return training_point[2]//self.step_total
 
     def step(self, training_point=None, valid_metric=None):
         if self.name == "warmR":

@@ -184,7 +184,6 @@ def WavEgs(egs_csv,conf,data_type='raw',partition=True,num_targets=0):
             sp = processor.PreSpeedPerturb(spk_num=num_targets,**perturb_conf)
             spkid_aug = sp._spkid_aug()
             dataset =  Processor(dataset,sp)
-
         random_chunk = conf.get('random_chunk',False)
         random_chunk_size = conf.get('random_chunk_size',2.015)
         dynamic_random_chunk = conf.get('dynamic_random_chunk',False)
@@ -295,6 +294,7 @@ class BaseBunch():
         valid_conf['pre_speed_perturb'] = False
         valid_conf['spec_aug'] = False
         valid_conf['shuffle'] = False
+        # valid_conf['dynamic_random_chunk'] = False
         data_type = egs_params.get('data_type','raw')
         trainset, num_targets_t = WavEgs(trainset_csv, train_conf, data_type=data_type,partition=True,num_targets=num_targets)
         

@@ -74,7 +74,6 @@ def select_model_device(model, use_gpu, gpu_id="", benchmark=False):
             # Get a gpu id list.
             gpu_id = parse_gpu_id_option(gpu_id)
             if is_main_training(): logger.info("The use_gpu is true and training will use GPU {0}.".format(gpu_id))
-
         ## Multi-GPU with DDP.
         if len(gpu_id) > 0 and use_ddp():
             if dist.get_world_size() != len(gpu_id):

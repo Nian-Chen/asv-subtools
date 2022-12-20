@@ -110,7 +110,7 @@ class TdnnAffine(torch.nn.Module):
         """
         assert len(inputs.shape) == 3
 
-        assert inputs.shape[1] == self.input_dim, f"inputs.shape[1]:{inputs.shape[1]},self.input_dim:{self.input_dim}"
+        assert inputs.shape[1] == self.input_dim
 
         # Do not use conv1d.padding for self.left_context + self.right_context != 0 case.
         if self.pad:

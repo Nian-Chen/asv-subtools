@@ -1947,7 +1947,7 @@ class SpeechAug(torch.nn.Module):
         aug_idx = torch.multinomial(self.random_weight, 1)[0]
 
         if aug_idx == 0:
-            return waveforms, lengths,spkid
+            return waveforms, lengths, spkid
         else:
             waves,lengths,spkid=self.augment[aug_idx-1](waveforms, lengths,spkid)
 
@@ -2001,10 +2001,14 @@ class SpeechAug(torch.nn.Module):
 
 
     def print_augment(self):
-        if self.augment:
-            print('speech augment type is {}.'.format(self.mod))
-            aug_dict=dict(zip(self.augment_name,self.augment))
-            for i,k in enumerate(aug_dict.items()):
-                print('({}) {}:  {}'.format(i,k[0],k[1]))
-        else:
-            print('no speech augment applied')
+        # if self.augment:
+            # print('speech augment type is {}.'.format(self.mod))
+            # aug_dict=dict(zip(self.augment_name,self.augment))
+            # for i,k in enumerate(aug_dict.items()):
+                # print('({}) {}:  {}'.format(i,k[0],k[1]))
+        # else:
+            # print('no speech augment applied')
+        # The aug_classes of tail_speechaug is default none
+        print(f"weight of no_augmentation : {self.random_weight[0]}")
+        for aug, weight in zip(self.augment, self.random_weight[1:]):
+            print(f"weight of augmentation {aug} : {weight}")

@@ -106,6 +106,7 @@ subtools/runPytorchLauncher.sh subtools/pytorch/launcher/runPTM_EcapaXvector_onl
 # done
 
 tasks="vox1-O vox1-O-clean vox1-E vox1-E-clean vox1-H vox1-H-clean"
+# tasks="vox1-O vox1-O-clean"
 submean=true
 prefix='raw'
 # The vectordir should be the same with the model_dir set in the launcher_py
@@ -114,6 +115,6 @@ for task in $tasks;do
     [ "$task" == "vox1-O" ] && score_norm=true
     [ "$task" == "vox1-O-clean" ] && score_norm=true
     subtools/recipe/voxcelebSRC/gather_results_from_epochs.sh --prefix $prefix --score cosine  --submean ${submean} \
-         --vectordir "exp/ecapa_tdnn_xvector_ssl_fixedchunk" --task $task --epochs "20" --positions "near" --trainset voxceleb2_dev \
-         --score-norm $score_norm --score-norm-method "asnorm" --top-n 800 --cohort-set voxceleb2_dev
+         --vectordir "exp/ecapa_tdnn_xvector_ssl_fixedchunk_dropout0.05_layerdrop0.05_largecycle" --task $task --epochs "4_cycle" --positions "near" --trainset voxceleb2_dev --cohort-set voxceleb2_dev --srcdata voxceleb1 \
+         --score-norm $score_norm --score-norm-method "asnorm" --top-n 800
 done

@@ -36,7 +36,7 @@ def for_extract_embedding(maxChunk=10000, isMatrix=True):
                 num_frames = input.shape[2]
                 
                 if hasattr(self, "use_w2v2"):
-                    maxChunk = 100 * 16000 # duration of each chunck for extracting embeddings: 100 seconds(100 * 16000 nframes)
+                    maxChunk = int(100 * 16000) # duration of each chunck for extracting embeddings: 100 seconds(100 * 16000 nframes)
                 else:
                     maxChunk = 10000
                 

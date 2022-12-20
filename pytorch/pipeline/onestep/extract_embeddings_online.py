@@ -59,6 +59,8 @@ parser.add_argument("--use-gpu", type=str, default='true',
 parser.add_argument("--gpu-id", type=str, default="",
                         help="Specify a fixed gpu, or select gpu automatically.")
 
+parser.add_argument("--job-index", type=int, default=1,
+                        help="Job index used for selecting gpu index.")
 parser.add_argument("model_path", metavar="model-path", type=str,
                     help="The model used to extract embeddings.")
 
@@ -93,8 +95,15 @@ try:
 
 
     # Select device
-    model = utils.select_model_device(model, args.use_gpu, gpu_id=args.gpu_id)
-    devc = utils.get_device(model)
+    # model = utils.select_model_device(model, args.use_gpu, gpu_id=args.gpu_id)
+    # devc = utils.get_device(model)
+    gpu_id = args.gpu_id.split(',')
+    job_index = args.job_index
+    print(f"gpu_id:{gpu_id}")
+    print(f"job_index:{job_index}")
+    devc = "cuda:" + gpu_id[job_index%len(gpu_id)]
+    model.to(devc)
+    
     model.eval()
     feature_extraction_conf = None
     if args.data_type != "kaldi":
