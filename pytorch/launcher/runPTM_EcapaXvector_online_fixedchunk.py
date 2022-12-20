@@ -202,7 +202,7 @@ PTM_nlayer = 10 # -1 means using layer sum
 PTM_dropout = 0.05
 # PTM_dir = "/data/huggingface/models/wav2vec2-large-xlsr-53"
 # PTM_dir = "/data/huggingface/models/wav2vec2-large-en"
-# PTM_dir = "/data/huggingface/models/wavlm_model"
+PTM_dir = "/data/huggingface/models/wavlm_model"
 # PTM_dir = "/data/huggingface/models/hubert_model"
 # PTM_dir = "/data/huggingface/models/unispeech_sat_model"
 
@@ -247,7 +247,7 @@ vad_wav_savdir = "export/vad_wav"
 
 traindata = "data/raw/voxceleb2_dev"
 # traindata = "data/voxceleb2_dev"
-traindata_for_egs = "data/raw/voxceleb2_dev"
+# traindata_for_egs = "data/raw/voxceleb2_dev"
 # traindata_for_egs = "data/raw/voxceleb2_dev_egs_6s"
 traindata_for_egs = "data/voxceleb2_dev_egs"
 egs_dir = "exp/egs/voxceleb2_dev_vad"
