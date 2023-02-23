@@ -231,7 +231,7 @@ PTM_dir = "/data/huggingface/models/wavlm_model"
 
 # The ft_sec_stage shoud be manually set for PTM-based training
 # When the ft_sec_stage is true, we unfreeze the feature extractor and set the max_lr to 5e-5
-ft_sec_stage = True
+ft_sec_stage = False
 epochs_first_stage = 20
 epochs_second_stage = 20
 total_epochs = epochs_first_stage + epochs_second_stage
@@ -490,11 +490,11 @@ if stage <= 3 <= endstage:
         # It is recommended to set strict=True to check whether the parameters of PTM are successfully loaded from the error message, and then set it to False.
         # model.load_state_dict(state_dict,strict=True)
         model.load_state_dict(state_dict,strict=False)
-        model.wav2vec2.config.mask_time_prob = model.wav2vec2.config.mask_feature_prob = 0.0
-        model.wav2vec2.config.layerdrop = 0.00
-        model.wav2vec2.config.attention_dropout = model.wav2vec2.config.hidden_dropout = model.wav2vec2.config.feat_proj_dropout = 0.00
-        model.wav2vec2.config.save_pretrained(model_dir + "/w2v2_config")
-        model.wav2vec2.masked_spec_embed.requires_grad = False
+        model.PTM.config.mask_time_prob = model.PTM.config.mask_feature_prob = 0.0
+        model.PTM.config.layerdrop = 0.00
+        model.PTM.config.attention_dropout = model.PTM.config.hidden_dropout = model.PTM.config.feat_proj_dropout = 0.00
+        model.PTM.config.save_pretrained(model_dir + "/PTM_config")
+        model.PTM.masked_spec_embed.requires_grad = False
         model.freeze_feature_extractor()
         # model.freeze_encoder_layers(10)
         if not ft_sec_stage:
