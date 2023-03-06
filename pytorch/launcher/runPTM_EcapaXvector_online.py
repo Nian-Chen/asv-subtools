@@ -223,6 +223,7 @@ use_w2v2 = True
 # PTM =["w2v2", "hubert", "unispeech-sat", "wavlm"]
 PTM = "wavlm"
 PTM_nlayer = 10 # -1 means using layer sum
+PTM_dropout = 0.05
 # PTM_dir = "/data/huggingface/models/wav2vec2-large-xlsr-53"
 # PTM_dir = "/data/huggingface/models/wav2vec2-large-en"
 PTM_dir = "/data/huggingface/models/wavlm_model"
@@ -294,6 +295,7 @@ model_params = {
     "PTM":PTM, 
     "PTM_dir":PTM_dir,
     "PTM_nlayer":PTM_nlayer,
+    "PTM_dropout":PTM_dropout,
     "aug_dropout": 0., "tail_dropout": 0.,
     "training": True, "extracted_embedding": "near",
     "ecapa_params": {"channels": 1024,
