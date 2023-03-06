@@ -473,23 +473,33 @@ if stage <= 3 <= endstage:
         if PTM == "w2v2":
             w2v2_path = PTM_dir + "/pytorch_model.bin"
             state_dict = torch.load(w2v2_path, map_location="cpu")
+            state_dict_rename = OrderedDict()
+            for key in state_dict:
+                state_dict_rename[key.replace("wav2vec2","PTM")] = state_dict[key]
         elif PTM == "hubert":
-            # The state_dict of hubert model starts with "hubert." which needed to be replaced with 'wav2vec2'.
-            w2v2_hubert_path = PTM_dir + "/pytorch_model_rename.bin"
+            w2v2_hubert_path = PTM_dir + "/pytorch_model.bin"
             state_dict = torch.load(w2v2_hubert_path, map_location="cpu")
+            state_dict_rename = OrderedDict()
+            for key in state_dict:
+                state_dict_rename["PTM."+key] = state_dict[key]
         elif PTM == "unispeech-sat":
-            # The state_dict of unispeech_sat model starts with "unispeech_sat." which needed to be replaced with 'wav2vec2'.
-            w2v2_unisat_path = PTM_dir + "/pytorch_model_rename.bin"
+            w2v2_unisat_path = PTM_dir + "/pytorch_model.bin"
             state_dict = torch.load(w2v2_unisat_path, map_location="cpu")
+            state_dict_rename = OrderedDict()
+            for key in state_dict:
+                state_dict_rename[key.replace("unispeech_sat","PTM")] = state_dict[key]
         elif PTM == "wavlm":
-            # The state_dict of wavlm model starts with "wavlm." which needed to be replaced with 'wav2vec2'.
-            w2v2_wavlm_path = PTM_dir + "/pytorch_model_rename.bin"
+            w2v2_wavlm_path = PTM_dir + "/pytorch_model.bin"
             state_dict = torch.load(w2v2_wavlm_path, map_location="cpu")
+            state_dict_rename = OrderedDict()
+            for key in state_dict:
+                state_dict_rename["PTM."+key] = state_dict[key]
         else:
              raise ValueError("Use PTM among [w2v2, hubert, unispeech-sat, wavlm]")
+        
         # It is recommended to set strict=True to check whether the parameters of PTM are successfully loaded from the error message, and then set it to False.
-        # model.load_state_dict(state_dict,strict=True)
-        model.load_state_dict(state_dict,strict=False)
+        # model.load_state_dict(state_dict_rename, strict=True)
+        model.load_state_dict(state_dict_rename, strict=False)
         model.PTM.config.mask_time_prob = model.PTM.config.mask_feature_prob = 0.0
         model.PTM.config.layerdrop = 0.00
         model.PTM.config.attention_dropout = model.PTM.config.hidden_dropout = model.PTM.config.feat_proj_dropout = 0.00
