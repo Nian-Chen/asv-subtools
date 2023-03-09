@@ -499,9 +499,14 @@ if stage <= 3 <= endstage:
         else:
              raise ValueError("Use PTM among [w2v2, hubert, unispeech-sat, wavlm]")
         
-        # It is recommended to set strict=True to check whether the parameters of PTM are successfully loaded from the error message, and then set it to False.
-        # model.load_state_dict(state_dict_rename, strict=True)
-        model.load_state_dict(state_dict_rename, strict=False)
+        try:
+            model.load_state_dict(state_dict_rename,strict=True)
+        except Exception as e:
+            if utils.is_main_training():
+                # Check the message to see if the parameters of PTM are loaded correctly.
+                print(str(e))
+            model.load_state_dict(state_dict_rename,strict=False)
+            
         model.PTM.config.mask_time_prob = model.PTM.config.mask_feature_prob = 0.0
         model.PTM.config.layerdrop = 0.00
         model.PTM.config.attention_dropout = model.PTM.config.hidden_dropout = model.PTM.config.feat_proj_dropout = 0.00
